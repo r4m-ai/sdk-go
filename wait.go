@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -34,17 +35,48 @@ const DefaultBaseURL = "https://r4m.ai"
 //
 // NewClientWithResponses does the same thing, but wants a server URL every
 // time even though there is only one host worth talking to, and has no auth
-// helper — so every caller writes the same request editor. Pass extra options
-// to reach a staging deployment (r4m.WithBaseURL).
+// helper — so every caller writes the same request editor. WithBaseURL exists
+// for r4m.ai's own staging deployments and must be https: a plain-http URL
+// (other than localhost) would send the API key in clear text, so it is
+// refused.
 func NewClientWithKey(apiKey string, opts ...ClientOption) (*ClientWithResponses, error) {
 	bearer := func(ctx context.Context, req *http.Request) error {
 		req.Header.Set("Authorization", "Bearer "+apiKey)
 		return nil
 	}
-	return NewClientWithResponses(
+	c, err := NewClientWithResponses(
 		DefaultBaseURL,
 		append([]ClientOption{WithRequestEditorFn(bearer)}, opts...)...,
 	)
+	if err != nil {
+		return nil, err
+	}
+	if inner, ok := c.ClientInterface.(*Client); ok {
+		if err := assertSafeBaseURL(inner.Server); err != nil {
+			return nil, err
+		}
+	}
+	return c, nil
+}
+
+// assertSafeBaseURL refuses a base URL that would carry the API key over
+// plain http. Only localhost may be http, for a server on the developer's
+// machine.
+func assertSafeBaseURL(server string) error {
+	u, err := url.Parse(server)
+	if err != nil {
+		return fmt.Errorf("r4m: base URL is not a URL: %q", server)
+	}
+	switch u.Scheme {
+	case "https":
+		return nil
+	case "http":
+		host := u.Hostname()
+		if host == "localhost" || host == "127.0.0.1" || host == "::1" {
+			return nil
+		}
+	}
+	return fmt.Errorf("r4m: base URL must be https (got %q): an API key must never travel in clear text; only http://localhost is allowed", server)
 }
 
 const (
