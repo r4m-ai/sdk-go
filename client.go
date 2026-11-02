@@ -29,9 +29,9 @@ const (
 
 // Defines values for AccountPlanTier.
 const (
-	Enterprise AccountPlanTier = "enterprise"
-	Free       AccountPlanTier = "free"
-	Pro        AccountPlanTier = "pro"
+	Custom AccountPlanTier = "custom"
+	Free   AccountPlanTier = "free"
+	Pro    AccountPlanTier = "pro"
 )
 
 // Defines values for GeocodeCandidatePrecision.
@@ -167,7 +167,7 @@ type Account struct {
 	Id            openapi_types.UUID  `json:"id"`
 	Name          *string             `json:"name,omitempty"`
 
-	// Plan The limits this account lives under (capacity, not money). An Enterprise account shows its own agreed numbers.
+	// Plan The limits this account lives under (capacity, not money). An account on individual terms shows its own agreed numbers.
 	Plan struct {
 		MaxAddressesPerRequest int `json:"maxAddressesPerRequest"`
 		MaxApiKeys             int `json:"maxApiKeys"`
