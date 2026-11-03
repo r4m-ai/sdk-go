@@ -287,7 +287,7 @@ type CreateOptimizationRequest struct {
 	// Parameters Optional optimization parameters
 	Parameters *OptimizationParameters `json:"parameters,omitempty"`
 
-	// WebhookUrl URL to receive an HMAC-signed webhook when the optimization completes. Must be reachable from the public internet; for local development, expose your server with a tunnel such as ngrok and pass its https URL.
+	// WebhookUrl Public https URL to receive an HMAC-signed webhook when the optimization completes or fails. Plain http, an IP address instead of a host name, localhost and names that resolve to private-network addresses are refused, and redirects are not followed; for local development, expose your server with a tunnel such as ngrok and pass its https URL.
 	WebhookUrl *string `json:"webhookUrl,omitempty"`
 }
 
@@ -642,6 +642,14 @@ type UsageLedgerKind string
 // UsageLedgerReason defines model for Usage.Ledger.Reason.
 type UsageLedgerReason string
 
+// WebhookSecret defines model for WebhookSecret.
+type WebhookSecret struct {
+	CreatedAt *time.Time `json:"createdAt"`
+
+	// Secret The signing secret (`whsec_…`)
+	Secret string `json:"secret"`
+}
+
 // TopupCreditsJSONBody defines parameters for TopupCredits.
 type TopupCreditsJSONBody struct {
 	// AmountCents Top-up amount in cents (defaults to the minimum pack).
@@ -861,6 +869,9 @@ type ClientInterface interface {
 
 	// GetUsage request
 	GetUsage(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetWebhookSecret request
+	GetWebhookSecret(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
 func (c *Client) GetAccount(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -1057,6 +1068,18 @@ func (c *Client) GetOptimization(ctx context.Context, id openapi_types.UUID, req
 
 func (c *Client) GetUsage(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetUsageRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetWebhookSecret(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetWebhookSecretRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -1531,6 +1554,33 @@ func NewGetUsageRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewGetWebhookSecretRequest generates requests for GetWebhookSecret
+func NewGetWebhookSecretRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/webhook-secret")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 func (c *Client) applyEditors(ctx context.Context, req *http.Request, additionalEditors []RequestEditorFn) error {
 	for _, r := range c.RequestEditors {
 		if err := r(ctx, req); err != nil {
@@ -1619,6 +1669,9 @@ type ClientWithResponsesInterface interface {
 
 	// GetUsageWithResponse request
 	GetUsageWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetUsageResponse, error)
+
+	// GetWebhookSecretWithResponse request
+	GetWebhookSecretWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetWebhookSecretResponse, error)
 }
 
 type GetAccountResponse struct {
@@ -1928,6 +1981,7 @@ type GetOptimizationResponse struct {
 	}
 	JSON401 *ErrorResponse
 	JSON404 *ErrorResponse
+	JSON409 *ErrorResponse
 	JSON429 *ErrorResponse
 }
 
@@ -1967,6 +2021,36 @@ func (r GetUsageResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r GetUsageResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetWebhookSecretResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *struct {
+		Data struct {
+			Previous WebhookSecret `json:"previous"`
+			Primary  WebhookSecret `json:"primary"`
+		} `json:"data"`
+		Success bool `json:"success"`
+	}
+	JSON401 *ErrorResponse
+	JSON429 *ErrorResponse
+}
+
+// Status returns HTTPResponse.Status
+func (r GetWebhookSecretResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetWebhookSecretResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -2119,6 +2203,15 @@ func (c *ClientWithResponses) GetUsageWithResponse(ctx context.Context, reqEdito
 		return nil, err
 	}
 	return ParseGetUsageResponse(rsp)
+}
+
+// GetWebhookSecretWithResponse request returning *GetWebhookSecretResponse
+func (c *ClientWithResponses) GetWebhookSecretWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetWebhookSecretResponse, error) {
+	rsp, err := c.GetWebhookSecret(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetWebhookSecretResponse(rsp)
 }
 
 // ParseGetAccountResponse parses an HTTP response from a GetAccountWithResponse call
@@ -2677,6 +2770,13 @@ func ParseGetOptimizationResponse(rsp *http.Response) (*GetOptimizationResponse,
 		}
 		response.JSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
 		var dest ErrorResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -2719,6 +2819,52 @@ func ParseGetUsageResponse(rsp *http.Response) (*GetUsageResponse, error) {
 			return nil, err
 		}
 		response.JSON401 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetWebhookSecretResponse parses an HTTP response from a GetWebhookSecretWithResponse call
+func ParseGetWebhookSecretResponse(rsp *http.Response) (*GetWebhookSecretResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetWebhookSecretResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			Data struct {
+				Previous WebhookSecret `json:"previous"`
+				Primary  WebhookSecret `json:"primary"`
+			} `json:"data"`
+			Success bool `json:"success"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
 
 	}
 
