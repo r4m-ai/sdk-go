@@ -81,7 +81,7 @@ func assertSafeBaseURL(server string) error {
 
 const (
 	DefaultWaitTimeout  = 5 * time.Minute
-	DefaultInitialDelay = 1 * time.Second
+	DefaultInitialDelay = 2 * time.Second
 	DefaultMaxDelay     = 5 * time.Second
 	// DefaultBusyTimeout is how long "busy" is acceptable before a call fails.
 	DefaultBusyTimeout = 2 * time.Minute
@@ -365,7 +365,7 @@ func (c *ClientWithResponses) SubmitOptimization(
 // row, an earlier process. If you are submitting and waiting in one place,
 // CreateOptimizationAndWaitForRoutes does both.
 //
-// It backs off 1s, 2s, 4s, then every 5s; treats a 429 as busy (see OnBusy);
+// It backs off 2s, 4s, then every 5s; treats a 429 as busy (see OnBusy);
 // and keeps going through transient network errors and 5xx, since the
 // optimization runs whether or not you stay connected.
 func (c *ClientWithResponses) WaitForRoutes(
