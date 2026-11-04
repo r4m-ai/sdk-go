@@ -2,10 +2,9 @@
 // the generator wipes sdks/go/ on every run, so this file lives in
 // scripts/sdk-templates/go/ and is copied back afterwards.
 //
-// Everything here sits on top of the generated calls; nothing is shadowed.
-// CreateOptimizationWithResponse keeps returning a receipt, so setting a
-// WebhookUrl and waiting, or setting one and polling yourself, all stay legal
-// — the delivery modes are deliberately not mutually exclusive.
+// CreateOptimization keeps returning a receipt, so setting a WebhookUrl and
+// waiting, or setting one and polling yourself, all stay legal — the delivery
+// modes are deliberately not mutually exclusive.
 
 package r4m
 
@@ -22,24 +21,23 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
-// DefaultBaseURL is baked in at generation time so NewClientWithKey needs
-// nothing but an API key.
+// DefaultBaseURL is baked in at generation time so New needs nothing but an
+// API key.
 const DefaultBaseURL = "https://r4m.ai"
 
-// NewClientWithKey builds a client for your account. Nothing is sent — this
-// only holds your credentials until the first call.
+// API is the client for your account. Every call returns the value you asked
+// for and an error; see api.go.
+type API struct {
+	raw *ClientWithResponses
+}
+
+// New builds a client for your account. Nothing is sent — this only holds your
+// credentials until the first call.
 //
-// Named for its neighbours (NewClient, NewClientWithResponses) rather than to
-// match the Python and TypeScript helpers: plain NewClient is already taken by
-// the generated low-level constructor.
-//
-// NewClientWithResponses does the same thing, but wants a server URL every
-// time even though there is only one host worth talking to, and has no auth
-// helper — so every caller writes the same request editor. WithBaseURL exists
-// for r4m.ai's own staging deployments and must be https: a plain-http URL
-// (other than localhost) would send the API key in clear text, so it is
-// refused.
-func NewClientWithKey(apiKey string, opts ...ClientOption) (*ClientWithResponses, error) {
+// WithBaseURL exists for r4m.ai's own staging deployments and must be https: a
+// plain-http URL (other than localhost) would send the API key in clear text,
+// so it is refused.
+func New(apiKey string, opts ...ClientOption) (*API, error) {
 	bearer := func(ctx context.Context, req *http.Request) error {
 		req.Header.Set("Authorization", "Bearer "+apiKey)
 		return nil
@@ -56,8 +54,11 @@ func NewClientWithKey(apiKey string, opts ...ClientOption) (*ClientWithResponses
 			return nil, err
 		}
 	}
-	return c, nil
+	return &API{raw: c}, nil
 }
+
+// Raw returns the generated client underneath, for whatever API does not cover.
+func (c *API) Raw() *ClientWithResponses { return c.raw }
 
 // assertSafeBaseURL refuses a base URL that would carry the API key over
 // plain http. Only localhost may be http, for a server on the developer's
@@ -205,7 +206,7 @@ type OptimizationTimeoutError struct {
 func (e *OptimizationTimeoutError) Error() string {
 	return fmt.Sprintf(
 		"timed out after %s waiting for optimization %s; it is still being "+
-			"processed — fetch it later with GetOptimizationWithResponse",
+			"processed — fetch it later with GetOptimization",
 		e.Timeout, e.OptimizationID,
 	)
 }
@@ -275,7 +276,7 @@ func newBusyState() *busyState { return &busyState{startedAt: time.Now()} }
 // onBusyResponse handles one busy answer: build the event, ask the callback,
 // then either wait as the server asked or return a *BusyError. Shared by
 // every helper so a 429 means the same thing whichever call met it.
-func (c *ClientWithResponses) onBusyResponse(
+func (c *API) onBusyResponse(
 	ctx context.Context,
 	body []byte,
 	resp *http.Response,
@@ -320,7 +321,7 @@ func (c *ClientWithResponses) onBusyResponse(
 	if len(event.ActiveOptimizationIDs) > 0 {
 		var id openapi_types.UUID
 		if err := id.UnmarshalText([]byte(event.ActiveOptimizationIDs[0])); err == nil {
-			_, _ = c.GetOptimizationWithResponse(ctx, id)
+			_, _ = c.raw.GetOptimizationWithResponse(ctx, id)
 		}
 	}
 	return sleepCtx(ctx, event.RetryAfter)
@@ -330,16 +331,16 @@ func (c *ClientWithResponses) onBusyResponse(
 // and returns the receipt (status pending). Use this when you will collect
 // the plan some other way — a webhook, your own poller — but still want the
 // 429s handled. Only OnBusy and BusyTimeout of opts are read.
-func (c *ClientWithResponses) SubmitOptimization(
+func (c *API) SubmitOptimization(
 	ctx context.Context,
-	body CreateOptimizationJSONRequestBody,
+	body CreateOptimizationRequest,
 	opts WaitOptions,
 ) (*Optimization, error) {
 	opts = opts.withDefaults()
 	state := newBusyState()
 
 	for {
-		created, err := c.CreateOptimizationWithResponse(ctx, body)
+		created, err := c.raw.CreateOptimizationWithResponse(ctx, body)
 		if err != nil {
 			return nil, err
 		}
@@ -350,10 +351,7 @@ func (c *ClientWithResponses) SubmitOptimization(
 			continue
 		}
 		if created.JSON202 == nil {
-			return nil, fmt.Errorf(
-				"could not create the optimization (HTTP %d): %s",
-				created.StatusCode(), string(created.Body),
-			)
+			return nil, apiError(created.HTTPResponse, created.Body)
 		}
 		return &created.JSON202.Data, nil
 	}
@@ -368,7 +366,7 @@ func (c *ClientWithResponses) SubmitOptimization(
 // It backs off 2s, 4s, then every 5s; treats a 429 as busy (see OnBusy);
 // and keeps going through transient network errors and 5xx, since the
 // optimization runs whether or not you stay connected.
-func (c *ClientWithResponses) WaitForRoutes(
+func (c *API) WaitForRoutes(
 	ctx context.Context,
 	id openapi_types.UUID,
 	opts WaitOptions,
@@ -379,7 +377,7 @@ func (c *ClientWithResponses) WaitForRoutes(
 	busy := newBusyState()
 
 	for time.Now().Before(deadline) {
-		resp, err := c.GetOptimizationWithResponse(ctx, id)
+		resp, err := c.raw.GetOptimizationWithResponse(ctx, id)
 
 		switch {
 		case err != nil:
@@ -403,9 +401,7 @@ func (c *ClientWithResponses) WaitForRoutes(
 
 		case resp.StatusCode() >= 400 && resp.StatusCode() < 500:
 			// 401/404 and friends are final — retrying cannot change the answer.
-			return nil, fmt.Errorf(
-				"could not fetch optimization %s (HTTP %d)", id, resp.StatusCode(),
-			)
+			return nil, apiError(resp.HTTPResponse, resp.Body)
 		}
 
 		if werr := sleepCtx(ctx, delay); werr != nil {
@@ -428,9 +424,9 @@ func (c *ClientWithResponses) WaitForRoutes(
 // Equivalent to SubmitOptimization followed by WaitForRoutes, for the common
 // case where both happen in the same place. A WebhookUrl may still be set —
 // you will simply be notified as well.
-func (c *ClientWithResponses) CreateOptimizationAndWaitForRoutes(
+func (c *API) CreateOptimizationAndWaitForRoutes(
 	ctx context.Context,
-	body CreateOptimizationJSONRequestBody,
+	body CreateOptimizationRequest,
 	opts WaitOptions,
 ) (*Optimization, error) {
 	receipt, err := c.SubmitOptimization(ctx, body, opts)
@@ -463,7 +459,7 @@ type ActiveWaitOptions struct {
 // WaitForActiveOptimizations returns once the account has nothing pending or
 // processing — the moment a SubmitOptimization is guaranteed a free slot.
 // Useful before a batch, or when OnBusy told you to come back later.
-func (c *ClientWithResponses) WaitForActiveOptimizations(
+func (c *API) WaitForActiveOptimizations(
 	ctx context.Context,
 	opts ActiveWaitOptions,
 ) error {
@@ -486,7 +482,7 @@ func (c *ClientWithResponses) WaitForActiveOptimizations(
 
 		for _, status := range []ListOptimizationsParamsStatus{"pending", "processing"} {
 			s := status
-			resp, err := c.ListOptimizationsWithResponse(ctx, &ListOptimizationsParams{Status: &s, Limit: &limit})
+			resp, err := c.raw.ListOptimizationsWithResponse(ctx, &ListOptimizationsParams{Status: &s, Limit: &limit})
 			if err != nil {
 				return err
 			}
@@ -494,10 +490,17 @@ func (c *ClientWithResponses) WaitForActiveOptimizations(
 				busy, busyFor = true, retryAfter(resp.HTTPResponse)
 				break
 			}
-			if resp.JSON200 != nil {
-				for _, item := range resp.JSON200.Data.Items {
-					ids = append(ids, item.Id.String())
+			if resp.JSON200 == nil {
+				// A failed look proves nothing: read as an empty list, it would
+				// report "nothing running" to a caller whose key was just revoked.
+				if resp.StatusCode() < 500 {
+					return apiError(resp.HTTPResponse, resp.Body)
 				}
+				busy, busyFor = true, opts.PollInterval
+				break
+			}
+			for _, item := range resp.JSON200.Data.Items {
+				ids = append(ids, item.Id.String())
 			}
 		}
 

@@ -215,10 +215,10 @@ type Address struct {
 	IsDepot *bool `json:"isDepot,omitempty"`
 
 	// Lat Latitude in decimal degrees. Optional: omit both `lat` and `lng` to have the address geocoded.
-	Lat *float32 `json:"lat,omitempty"`
+	Lat *float64 `json:"lat,omitempty"`
 
 	// Lng Longitude in decimal degrees. Goes together with `lat`.
-	Lng *float32 `json:"lng,omitempty"`
+	Lng *float64 `json:"lng,omitempty"`
 
 	// Priority Stop priority (1 = highest). Higher-priority stops are scheduled earlier.
 	Priority *int `json:"priority,omitempty"`
@@ -385,10 +385,10 @@ type GeocodeResultStatus string
 type GeocodingOptions struct {
 	// Bounds Bounding box; geocoding candidates outside it are discarded before anything else.
 	Bounds *struct {
-		East  float32 `json:"east"`
-		North float32 `json:"north"`
-		South float32 `json:"south"`
-		West  float32 `json:"west"`
+		East  float64 `json:"east"`
+		North float64 `json:"north"`
+		South float64 `json:"south"`
+		West  float64 `json:"west"`
 	} `json:"bounds,omitempty"`
 
 	// MinPrecision Coarsest match still accepted. Default `address`: a street address, building or point of interest. `street` also accepts a road without a number; `city` accepts a town centre.
@@ -476,8 +476,8 @@ type OptimizationAddress struct {
 
 	// IsDepot When true, marks this stop as the route's depot (start and/or end).
 	IsDepot *bool   `json:"isDepot,omitempty"`
-	Lat     float32 `json:"lat"`
-	Lng     float32 `json:"lng"`
+	Lat     float64 `json:"lat"`
+	Lng     float64 `json:"lng"`
 
 	// Priority Stop priority (1 = highest). Higher-priority stops are scheduled earlier.
 	Priority *int `json:"priority,omitempty"`
