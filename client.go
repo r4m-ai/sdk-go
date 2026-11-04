@@ -504,7 +504,7 @@ type OptimizationAddressResolvedPrecision string
 
 // OptimizationParameters Optional optimization parameters
 type OptimizationParameters struct {
-	// MaxRouteDistanceMeters Maximum distance of one route, in meters. Applied to the whole kilometre, so a cap under 1 km becomes 1 km. Availability and ceiling depend on your plan.
+	// MaxRouteDistanceMeters Maximum distance of one route, in meters. Applied in steps of 1609 meters, rounded down, so a cap under 1609 becomes 1609. Availability and ceiling depend on your plan.
 	MaxRouteDistanceMeters *int `json:"maxRouteDistanceMeters,omitempty"`
 
 	// MaxRouteDurationSeconds Maximum wall-clock duration of one route, in seconds. Availability and ceiling depend on your plan.
