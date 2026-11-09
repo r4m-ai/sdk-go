@@ -111,6 +111,11 @@ const (
 	OptimizationAddressResolvedPrecisionStreet  OptimizationAddressResolvedPrecision = "street"
 )
 
+// Defines values for OptimizationParametersBalanceBy.
+const (
+	Stops OptimizationParametersBalanceBy = "stops"
+)
+
 // Defines values for OptimizationParametersOptimizeMode.
 const (
 	Distance OptimizationParametersOptimizeMode = "Distance"
@@ -504,6 +509,15 @@ type OptimizationAddressResolvedPrecision string
 
 // OptimizationParameters Optional optimization parameters
 type OptimizationParameters struct {
+	// BalanceBy Use every vehicle in `maxRoutes` and share the work evenly by this measure. Without it `maxRoutes` is only a ceiling, and the solver may use fewer vehicles. Requires `maxRoutes`.
+	BalanceBy *OptimizationParametersBalanceBy `json:"balanceBy,omitempty"`
+
+	// DefaultServiceTimeSeconds Time spent at every stop that does not set its own `serviceTimeSeconds`, in seconds. Not applied to the depot.
+	DefaultServiceTimeSeconds *int `json:"defaultServiceTimeSeconds,omitempty"`
+
+	// KeepOrder When true, the stops are driven in the order sent, depot first, instead of being reordered; you get the distances, times and road path of that order. The engine ignores anything that would change the order, so `optimizeMode`, fleet constraints, delivery windows and priorities are refused alongside it.
+	KeepOrder *bool `json:"keepOrder,omitempty"`
+
 	// MaxRouteDistanceMeters Maximum distance of one route, in meters. Applied in steps of 1609 meters, rounded down, so a cap under 1609 becomes 1609. Availability and ceiling depend on your plan.
 	MaxRouteDistanceMeters *int `json:"maxRouteDistanceMeters,omitempty"`
 
@@ -512,6 +526,9 @@ type OptimizationParameters struct {
 
 	// MaxRoutes Maximum number of vehicles (routes) for multi-route VRP optimization. Availability and ceiling depend on your plan.
 	MaxRoutes *int `json:"maxRoutes,omitempty"`
+
+	// MaxStopsPerRoute Maximum number of stops on one route, not counting the depot. Stops that fit on no route come back in `unroutedStops`.
+	MaxStopsPerRoute *int `json:"maxStopsPerRoute,omitempty"`
 
 	// OptimizeMode Optimization objective: minimize total travel time or distance.
 	OptimizeMode *OptimizationParametersOptimizeMode `json:"optimizeMode,omitempty"`
@@ -528,6 +545,9 @@ type OptimizationParameters struct {
 	// TravelMode Mode of transportation used when computing the route.
 	TravelMode *OptimizationParametersTravelMode `json:"travelMode,omitempty"`
 }
+
+// OptimizationParametersBalanceBy Use every vehicle in `maxRoutes` and share the work evenly by this measure. Without it `maxRoutes` is only a ceiling, and the solver may use fewer vehicles. Requires `maxRoutes`.
+type OptimizationParametersBalanceBy string
 
 // OptimizationParametersOptimizeMode Optimization objective: minimize total travel time or distance.
 type OptimizationParametersOptimizeMode string
