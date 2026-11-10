@@ -518,13 +518,13 @@ type OptimizationParameters struct {
 	// KeepOrder When true, the stops are driven in the order sent, depot first, instead of being reordered; you get the distances, times and road path of that order. The engine ignores anything that would change the order, so `optimizeMode`, fleet constraints, delivery windows and priorities are refused alongside it.
 	KeepOrder *bool `json:"keepOrder,omitempty"`
 
-	// MaxRouteDistanceMeters Maximum distance of one route, in meters. Applied in steps of 1609 meters, rounded down, so a cap under 1609 becomes 1609. Availability and ceiling depend on your plan.
+	// MaxRouteDistanceMeters Maximum distance of one route, in meters. Applied in steps of 1609 meters, rounded down, so a cap under 1609 becomes 1609. Defaults to the plan's ceiling. Availability and ceiling depend on your plan.
 	MaxRouteDistanceMeters *int `json:"maxRouteDistanceMeters,omitempty"`
 
-	// MaxRouteDurationSeconds Maximum wall-clock duration of one route, in seconds. Availability and ceiling depend on your plan.
+	// MaxRouteDurationSeconds Maximum wall-clock duration of one route, in seconds. Defaults to the plan's ceiling. Availability and ceiling depend on your plan.
 	MaxRouteDurationSeconds *int `json:"maxRouteDurationSeconds,omitempty"`
 
-	// MaxRoutes Maximum number of vehicles (routes) for multi-route VRP optimization. Availability and ceiling depend on your plan.
+	// MaxRoutes Maximum number of vehicles (routes) for multi-route VRP optimization. Defaults to 1, or to the plan's ceiling when the request sets another fleet parameter (a route cap, maxStopsPerRoute or balanceBy). Availability and ceiling depend on your plan.
 	MaxRoutes *int `json:"maxRoutes,omitempty"`
 
 	// MaxStopsPerRoute Maximum number of stops on one route, not counting the depot. Stops that fit on no route come back in `unroutedStops`.
