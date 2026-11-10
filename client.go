@@ -524,7 +524,7 @@ type OptimizationParameters struct {
 	// MaxRouteDurationSeconds Maximum wall-clock duration of one route, in seconds. Defaults to the plan's ceiling. Availability and ceiling depend on your plan.
 	MaxRouteDurationSeconds *int `json:"maxRouteDurationSeconds,omitempty"`
 
-	// MaxRoutes Maximum number of vehicles (routes) for multi-route VRP optimization. Defaults to 1, or to the plan's ceiling when the request sets another fleet parameter (a route cap, maxStopsPerRoute or balanceBy). Availability and ceiling depend on your plan.
+	// MaxRoutes Maximum number of vehicles (routes) for multi-route VRP optimization. Defaults to 1, or to the plan's ceiling when the request sets another fleet parameter (a route cap or maxStopsPerRoute). Availability and ceiling depend on your plan.
 	MaxRoutes *int `json:"maxRoutes,omitempty"`
 
 	// MaxStopsPerRoute Maximum number of stops on one route, not counting the depot. Stops that fit on no route come back in `unroutedStops`.
