@@ -90,17 +90,22 @@ func apiError(resp *http.Response, body []byte) error {
 //	r4m.Address{Address: "Depot", IsDepot: r4m.Ptr(true)}
 func Ptr[T any](v T) *T { return &v }
 
-// CreateOptimization submits an optimization and returns the receipt (status
-// pending). A 429 comes back as an *ApiError; SubmitOptimization waits it out.
+// CreateOptimization submits an optimization and returns the receipt: status
+// pending, or — when the request was answered from one already made (200
+// instead of 202, nothing charged) — whatever status that one has. A 429
+// comes back as an *ApiError; SubmitOptimization waits it out.
 func (c *API) CreateOptimization(ctx context.Context, body CreateOptimizationRequest) (*Optimization, error) {
 	resp, err := c.raw.CreateOptimizationWithResponse(ctx, body)
 	if err != nil {
 		return nil, err
 	}
-	if resp.JSON202 == nil {
-		return nil, apiError(resp.HTTPResponse, resp.Body)
+	switch {
+	case resp.JSON202 != nil:
+		return &resp.JSON202.Data, nil
+	case resp.JSON200 != nil:
+		return &resp.JSON200.Data, nil
 	}
-	return &resp.JSON202.Data, nil
+	return nil, apiError(resp.HTTPResponse, resp.Body)
 }
 
 // GetOptimization fetches one optimization.

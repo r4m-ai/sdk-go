@@ -354,10 +354,14 @@ func (c *API) SubmitOptimization(
 			}
 			continue
 		}
-		if created.JSON202 == nil {
-			return nil, apiError(created.HTTPResponse, created.Body)
+		// 202: a new optimization. 200: answered from one already made.
+		switch {
+		case created.JSON202 != nil:
+			return &created.JSON202.Data, nil
+		case created.JSON200 != nil:
+			return &created.JSON200.Data, nil
 		}
-		return &created.JSON202.Data, nil
+		return nil, apiError(created.HTTPResponse, created.Body)
 	}
 }
 
