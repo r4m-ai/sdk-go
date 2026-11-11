@@ -31,12 +31,17 @@ var ErrWebhookSignature = errors.New("webhook signature did not match")
 const (
 	EventOptimizationCompleted = "optimization.completed"
 	EventOptimizationFailed    = "optimization.failed"
+	// EventOptimizationCancelled: you cancelled it. Neither Result nor Error
+	// is set, no result follows, and the charge stays.
+	EventOptimizationCancelled = "optimization.cancelled"
 )
 
 // WebhookError says why an optimization failed. Code is NO_ROUTES (the engine
-// produced no routes), PROCESSING_FAILED (the job threw) or TIMED_OUT (it did
-// not finish within 15 minutes and its concurrency slot was released); the
-// the charge is refunded in every case. More codes may be added, so handle the
+// produced no routes), PROCESSING_FAILED (the job threw), TIMED_OUT (it did
+// not finish within 15 minutes and its concurrency slot was released) — the
+// charge is refunded in each — or SOURCE_FAILED (it was answered from another
+// optimization for the same stops in another order, which failed or was
+// cancelled; nothing was charged). More codes may be added, so handle the
 // ones you know and fall through on the rest.
 type WebhookError struct {
 	Code    string `json:"code"`
@@ -45,7 +50,7 @@ type WebhookError struct {
 
 // WebhookEvent is the body we POST to your WebhookUrl.
 //
-// Go has no sum types, so the two outcomes share one struct and Type says
+// Go has no sum types, so the outcomes share one struct and Type says
 // which you have: Result is non-nil on EventOptimizationCompleted, Error is
 // non-nil on EventOptimizationFailed. Switch on Type rather than nil-checking
 // the fields — an added event would otherwise look like a completed one with

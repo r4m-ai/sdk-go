@@ -88,6 +88,7 @@ const (
 
 // Defines values for OptimizationStatus.
 const (
+	OptimizationStatusCancelled  OptimizationStatus = "cancelled"
 	OptimizationStatusCompleted  OptimizationStatus = "completed"
 	OptimizationStatusFailed     OptimizationStatus = "failed"
 	OptimizationStatusPending    OptimizationStatus = "pending"
@@ -156,6 +157,7 @@ const (
 
 // Defines values for ListOptimizationsParamsStatus.
 const (
+	Cancelled  ListOptimizationsParamsStatus = "cancelled"
 	Completed  ListOptimizationsParamsStatus = "completed"
 	Failed     ListOptimizationsParamsStatus = "failed"
 	Pending    ListOptimizationsParamsStatus = "pending"
@@ -527,7 +529,7 @@ type OptimizationParameters struct {
 	// MaxRoutes Maximum number of vehicles (routes) for multi-route VRP optimization. Defaults to 1, or to the plan's ceiling when the request sets another fleet parameter (a route cap or maxStopsPerRoute). Availability and ceiling depend on your plan.
 	MaxRoutes *int `json:"maxRoutes,omitempty"`
 
-	// MaxStopsPerRoute Maximum number of stops on one route, not counting the depot. Stops that fit on no route come back in `unroutedStops`.
+	// MaxStopsPerRoute Maximum number of stops on one route, not counting the depot. Stops that fit on no route come back in `unroutedStops`. Defaults to the plan's ceiling, so a request with more stops than that is split across vehicles. Availability and ceiling depend on your plan.
 	MaxStopsPerRoute *int `json:"maxStopsPerRoute,omitempty"`
 
 	// OptimizeMode Optimization objective: minimize total travel time or distance.
@@ -887,6 +889,9 @@ type ClientInterface interface {
 	// GetOptimization request
 	GetOptimization(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// CancelOptimization request
+	CancelOptimization(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetUsage request
 	GetUsage(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -1076,6 +1081,18 @@ func (c *Client) DeleteOptimization(ctx context.Context, id openapi_types.UUID, 
 
 func (c *Client) GetOptimization(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetOptimizationRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CancelOptimization(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCancelOptimizationRequest(c.Server, id)
 	if err != nil {
 		return nil, err
 	}
@@ -1547,6 +1564,40 @@ func NewGetOptimizationRequest(server string, id openapi_types.UUID) (*http.Requ
 	return req, nil
 }
 
+// NewCancelOptimizationRequest generates requests for CancelOptimization
+func NewCancelOptimizationRequest(server string, id openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "id", runtime.ParamLocationPath, id)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/optimizations/%s/cancel", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetUsageRequest generates requests for GetUsage
 func NewGetUsageRequest(server string) (*http.Request, error) {
 	var err error
@@ -1686,6 +1737,9 @@ type ClientWithResponsesInterface interface {
 
 	// GetOptimizationWithResponse request
 	GetOptimizationWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetOptimizationResponse, error)
+
+	// CancelOptimizationWithResponse request
+	CancelOptimizationWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*CancelOptimizationResponse, error)
 
 	// GetUsageWithResponse request
 	GetUsageWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetUsageResponse, error)
@@ -1940,7 +1994,11 @@ func (r ListOptimizationsResponse) StatusCode() int {
 type CreateOptimizationResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON202      *struct {
+	JSON200      *struct {
+		Data    Optimization `json:"data"`
+		Success bool         `json:"success"`
+	}
+	JSON202 *struct {
 		Data    Optimization `json:"data"`
 		Success bool         `json:"success"`
 	}
@@ -1973,6 +2031,7 @@ type DeleteOptimizationResponse struct {
 	JSON200      *DeletedResource
 	JSON401      *ErrorResponse
 	JSON404      *ErrorResponse
+	JSON409      *ErrorResponse
 	JSON429      *ErrorResponse
 }
 
@@ -2001,7 +2060,6 @@ type GetOptimizationResponse struct {
 	}
 	JSON401 *ErrorResponse
 	JSON404 *ErrorResponse
-	JSON409 *ErrorResponse
 	JSON429 *ErrorResponse
 }
 
@@ -2015,6 +2073,39 @@ func (r GetOptimizationResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r GetOptimizationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CancelOptimizationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *struct {
+		Data struct {
+			Id     openapi_types.UUID              `json:"id"`
+			Status CancelOptimization200DataStatus `json:"status"`
+		} `json:"data"`
+		Success bool `json:"success"`
+	}
+	JSON401 *ErrorResponse
+	JSON404 *ErrorResponse
+	JSON409 *ErrorResponse
+	JSON429 *ErrorResponse
+}
+type CancelOptimization200DataStatus string
+
+// Status returns HTTPResponse.Status
+func (r CancelOptimizationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CancelOptimizationResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -2214,6 +2305,15 @@ func (c *ClientWithResponses) GetOptimizationWithResponse(ctx context.Context, i
 		return nil, err
 	}
 	return ParseGetOptimizationResponse(rsp)
+}
+
+// CancelOptimizationWithResponse request returning *CancelOptimizationResponse
+func (c *ClientWithResponses) CancelOptimizationWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*CancelOptimizationResponse, error) {
+	rsp, err := c.CancelOptimization(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCancelOptimizationResponse(rsp)
 }
 
 // GetUsageWithResponse request returning *GetUsageResponse
@@ -2655,6 +2755,16 @@ func ParseCreateOptimizationResponse(rsp *http.Response) (*CreateOptimizationRes
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			Data    Optimization `json:"data"`
+			Success bool         `json:"success"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
 		var dest struct {
 			Data    Optimization `json:"data"`
@@ -2740,6 +2850,13 @@ func ParseDeleteOptimizationResponse(rsp *http.Response) (*DeleteOptimizationRes
 		}
 		response.JSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
 		var dest ErrorResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -2770,6 +2887,59 @@ func ParseGetOptimizationResponse(rsp *http.Response) (*GetOptimizationResponse,
 		var dest struct {
 			Data    Optimization `json:"data"`
 			Success bool         `json:"success"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCancelOptimizationResponse parses an HTTP response from a CancelOptimizationWithResponse call
+func ParseCancelOptimizationResponse(rsp *http.Response) (*CancelOptimizationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CancelOptimizationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			Data struct {
+				Id     openapi_types.UUID              `json:"id"`
+				Status CancelOptimization200DataStatus `json:"status"`
+			} `json:"data"`
+			Success bool `json:"success"`
 		}
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err

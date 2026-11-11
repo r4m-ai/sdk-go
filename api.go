@@ -135,6 +135,20 @@ func (c *API) ListOptimizations(ctx context.Context, params *ListOptimizationsPa
 	return &page, nil
 }
 
+// CancelOptimization stops waiting for an optimization still pending or
+// processing: it turns cancelled and frees its concurrency slot at once. The
+// charge is not refunded and no result is ever recorded for it.
+func (c *API) CancelOptimization(ctx context.Context, id openapi_types.UUID) error {
+	resp, err := c.raw.CancelOptimizationWithResponse(ctx, id)
+	if err != nil {
+		return err
+	}
+	if resp.JSON200 == nil {
+		return apiError(resp.HTTPResponse, resp.Body)
+	}
+	return nil
+}
+
 // DeleteOptimization permanently deletes an optimization and its result.
 func (c *API) DeleteOptimization(ctx context.Context, id openapi_types.UUID) error {
 	resp, err := c.raw.DeleteOptimizationWithResponse(ctx, id)

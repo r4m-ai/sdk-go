@@ -182,14 +182,18 @@ func (o WaitOptions) withDefaults() WaitOptions {
 	return o
 }
 
-// OptimizationFailedError means the optimization finished, but the solver
-// could not produce a plan.
+// OptimizationFailedError means the optimization ended without a plan: it
+// failed (the solver could not produce one) or was cancelled —
+// Optimization.Status says which.
 type OptimizationFailedError struct {
 	Optimization Optimization
 }
 
 func (e *OptimizationFailedError) Error() string {
 	msg := "optimization failed"
+	if e.Optimization.Status == OptimizationStatusCancelled {
+		msg = "optimization cancelled"
+	}
 	if e.Optimization.ErrorMessage != nil && *e.Optimization.ErrorMessage != "" {
 		msg = *e.Optimization.ErrorMessage
 	}
@@ -395,7 +399,7 @@ func (c *API) WaitForRoutes(
 			switch resp.JSON200.Data.Status {
 			case OptimizationStatusCompleted:
 				return &resp.JSON200.Data, nil
-			case OptimizationStatusFailed:
+			case OptimizationStatusFailed, OptimizationStatusCancelled:
 				return nil, &OptimizationFailedError{Optimization: resp.JSON200.Data}
 			}
 
